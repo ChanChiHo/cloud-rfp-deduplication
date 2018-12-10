@@ -13,33 +13,30 @@ class MyDedup {
 
     private String store;
     private Map<String, Integer> index;
-    private Map<String, Integer> fileList;
+    private Map<String, Long> fileList;
     private int windowSize, q, max_chunk, d, k;
+    private boolean cloud;
+    private int numLogicalChunks;
+    private int numPhysicalChunks;
+    private int numBytesDedup;
+    private int numBytesNoDedup;
 
     public MyDedup(int min_chunk, int avg_chunk, int max_chunk, int d, boolean cloud) {
+        this(cloud);
         this.windowSize = min_chunk;
         this.q = avg_chunk;
         this.max_chunk = max_chunk;
         this.d = d;
         this.k = this.q - 1;
-        this.k = 15;
-        if (cloud) {
-            this.store = "";
-        }
-        else {
-            this.store = getLocalStore();
-        }
-        constructIndex();
-        constructFileList();
     }
 
     public MyDedup(boolean cloud) {
-        if (cloud) {
-            this.store = "";
-        }
-        else {
-            this.store = getLocalStore();
-        }
+        this.cloud = cloud;
+        this.store = getLocalStore();
+        this.numLogicalChunks = 0;
+        this.numPhysicalChunks = 0;
+        this.numBytesDedup = 0;
+        this.numBytesNoDedup = 0;
         constructIndex();
         constructFileList();
     }
@@ -52,25 +49,47 @@ class MyDedup {
         return localStore;
     }
 
-    private void downloadIndex() {
-        // Download mydedup.index from cloud to data
+    private void uploadFile(String filePath) {
+        // Upload from Path only - do not append this.store
+        if (this.cloud) {
+
+        }
     }
 
-    private void uploadIndex() {
-        // Upload mydedup.index from data to cloud
+    private void downloadFile(String fileName) {
+        // Store in this.store
+        if (this.cloud) {
+
+        }
+    }
+
+    private void deleteFile(String fileName) {
+        if (this.cloud) {
+
+        }
     }
 
     private void constructIndex() {
         this.index = new HashMap<String, Integer>();
-        String fileName = this.store + indexFileName;
+        String filePath = this.store + indexFileName;
         String line = null;
         String[] words = null;
 
-        downloadIndex();
+        downloadFile(indexFileName);
 
         try {
-            FileReader fileReader = new FileReader(fileName);
+            FileReader fileReader = new FileReader(filePath);
             BufferedReader bufferedReader = new BufferedReader(fileReader);
+
+            while ((line = bufferedReader.readLine()) != null) {
+                
+                words = line.split(" ");
+                this.numLogicalChunks = Integer.valueOf(words[0]);
+                this.numPhysicalChunks = Integer.valueOf(words [1]);
+                this.numBytesDedup = Integer.valueOf(words[2]);
+                this.numBytesNoDedup = Integer.valueOf(words[3]);
+                break;
+            }
 
             while((line = bufferedReader.readLine()) != null) {
                 words = line.split(" ");
@@ -82,10 +101,9 @@ class MyDedup {
         catch(FileNotFoundException ex) {            
         }
         catch(IOException ex) {
-            println("Error reading file '" + fileName + "'");
+            println("Error reading file '" + filePath + "'");
             ex.printStackTrace();
         }
-        println(Arrays.toString(this.index.entrySet().toArray()));
     }
 
     private void storeIndex() {
@@ -93,11 +111,16 @@ class MyDedup {
         Update index file from structure
         Upload new index file
         */
-        String fileName = this.store + indexFileName;
+        String filePath = this.store + indexFileName;
         String line = null;
         try {
-            FileWriter fileWriter = new FileWriter(fileName, false);
+            FileWriter fileWriter = new FileWriter(filePath, false);
             BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+
+            line = String.valueOf(this.numLogicalChunks) + " " + String.valueOf(this.numPhysicalChunks) + " " +
+                    String.valueOf(this.numBytesDedup) + " " + String.valueOf(this.numBytesNoDedup);
+            bufferedWriter.write(line);
+            bufferedWriter.newLine();
 
             for (Map.Entry<String, Integer> entry : this.index.entrySet()) {
                 String hash = entry.getKey();
@@ -109,33 +132,28 @@ class MyDedup {
             bufferedWriter.close();         
         }
         catch(IOException ex) {
-            println("Error writing index file '" + fileName + "'");
+            println("Error writing index file '" + filePath + "'");
             ex.printStackTrace();
         }
-        uploadIndex();
-    }
 
-    private void downloadFileList() {
-        // Download mydedup.index from cloud to data
-    }
-
-    private void uploadFileList() {
-        // Upload mydedup.index from data to cloud
+        uploadFile(filePath);
     }
 
     private void constructFileList() {
-        this.fileList = new HashMap<String, Integer>();
-        String fileName = this.store + fileListName;
+        this.fileList = new HashMap<String, Long>();
+        String filePath = this.store + fileListName;
         String line = null;
-
-        downloadFileList();
+        String[] words = null;
+        
+        downloadFile(fileListName);
 
         try {
-            FileReader fileReader = new FileReader(fileName);
+            FileReader fileReader = new FileReader(filePath);
             BufferedReader bufferedReader = new BufferedReader(fileReader);
 
             while((line = bufferedReader.readLine()) != null) {
-                this.index.put(line, 1);
+                words = line.split(" ");
+                this.fileList.put(words[0], Long.valueOf(words[1]));
             }
 
             bufferedReader.close();         
@@ -143,35 +161,40 @@ class MyDedup {
         catch(FileNotFoundException ex) {            
         }
         catch(IOException ex) {
-            println("Error reading file '" + fileName + "'");
+            println("Error reading file '" + filePath + "'");
             ex.printStackTrace();
         }
-        println(Arrays.toString(this.fileList.entrySet().toArray()));
+        //println(Arrays.toString(this.fileList.entrySet().toArray()));
     }
 
     private void storeFileList() {
-        String fileName = this.store + fileListName;
+        String filePath = this.store + fileListName;
         try {
-            FileWriter fileWriter = new FileWriter(fileName, false);
+            FileWriter fileWriter = new FileWriter(filePath, false);
             BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-
-            for (String file: this.fileList.keySet()) {
-                bufferedWriter.write(file);
+            String line = null;
+            for (Map.Entry<String, Long> entry : this.fileList.entrySet()) {
+                String file = entry.getKey();
+                Long size = entry.getValue();
+                line = file + " " + String.valueOf(size);
+                bufferedWriter.write(line);
                 bufferedWriter.newLine();
             }
             bufferedWriter.close();         
         }
         catch(IOException ex) {
-            println("Error writing index file '" + fileName + "'");
+            println("Error writing index file '" + filePath + "'");
             ex.printStackTrace();
         }
-        uploadIndex();
+        
+        uploadFile(filePath);
     }
 
-    private byte[] readFileBytes(String filename) {
-        File file = new File(filename);
+    private byte[] readFileBytes(String filePath) {
+        File file = new File(filePath);
         FileInputStream fin = null;
         byte[] buf = null;
+
 		try {
 			fin = new FileInputStream(file);
 			buf = new byte[(int)file.length()];
@@ -179,7 +202,7 @@ class MyDedup {
             fin.close();
 		}
 		catch (FileNotFoundException e) {
-            println("File " + filename + " not found");
+            println("File " + filePath + " not found");
 		}
 		catch (IOException ioe) {
 			println("Exception while reading file " + ioe);
@@ -205,32 +228,45 @@ class MyDedup {
         return fp;
     }
 
-    private int checkBoundary(int fp, int numZeroes) {
-        if ((fp & this.k) == 0) {
-            return 1;
-        }
-        else if (numZeroes > 0) {
-            return 0;
-        }
-        else {
-            return -1;
-        }
-    }
-
     private String hash(byte[] buf, int start, int len) {
-        StringBuffer res = new StringBuffer();
+        String hash = null;
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             md.update(buf, start, len);
             byte[] byteHash = md.digest();
+            StringBuffer res = new StringBuffer();
             for (byte b : byteHash) {
                 res.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
             }
+            hash = res.toString();
         }
         catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
-        return res.toString();
+
+        if (hash != null) {
+            uploadChunk(hash, buf, start, len);
+        }
+        return hash;
+    }
+
+    private void uploadChunk(String hash, byte[] buf, int start, int len) {
+        if (this.index.containsKey(hash)) {
+            int ref = this.index.get(hash);
+            this.index.put(hash, ref + 1);
+        }
+        else {
+            this.numBytesDedup += len;
+            this.index.put(hash, 1);
+            String filePath = this.store + hash;
+            try(FileOutputStream fos = new FileOutputStream(filePath, false)) {
+                fos.write(buf, start, len);
+            }
+            catch(IOException e) {
+                e.printStackTrace();
+            }
+            uploadFile(filePath);
+        }
     }
 
     private int checkZero(byte[] buf, int startIndex, int length) {
@@ -244,7 +280,7 @@ class MyDedup {
         return numZeroes;
     }
 
-    private String[] getChunks(byte[] buf) {
+    private String[] makeChunks(byte[] buf) {
 
         List<String> chunks = new ArrayList<String>();
         int length = buf.length;
@@ -270,8 +306,7 @@ class MyDedup {
                     idx = startIndex - 1;   // -1 because of idx++ at the end of while block
                 }
                 else {
-                    println("Hash found in first");
-                    chunks.add(hash(buf, startIndex, currentWindow));
+                    chunks.add("1 " + hash(buf, startIndex, currentWindow));
                     startIndex += currentWindow;
                     currentWindow = this.windowSize;
                     idx = startIndex - 1;   // -1 because of idx++ at the end of while block
@@ -286,7 +321,6 @@ class MyDedup {
         }
 
         while (idx + this.windowSize <= length) {
-            println("INdex: " + String.valueOf(idx));
 
             fp = rabinFP(buf, idx, prevFp);
             prevFp = fp;
@@ -302,7 +336,7 @@ class MyDedup {
                     idx = startIndex - 1;   // -1 because of idx++ at the end of while block
                 }
                 else {
-                    chunks.add(hash(buf, startIndex, currentWindow));
+                    chunks.add("1 " + hash(buf, startIndex, currentWindow));
                     startIndex += currentWindow;
                     currentWindow = this.windowSize;
                     idx = startIndex - 1;   // -1 because of idx++ at the end of while block
@@ -322,7 +356,7 @@ class MyDedup {
                 chunks.add(val);
             }
             else {
-                chunks.add(hash(buf, startIndex, length - startIndex));
+                chunks.add("1 " + hash(buf, startIndex, length - startIndex));
             }
         }
 
@@ -330,8 +364,9 @@ class MyDedup {
     }
 
     private void writeRecipe(String fileName, String[] chunks) {
+        String filePath = this.store + fileName;
         try {
-            FileWriter fileWriter = new FileWriter(this.store + fileName, false);
+            FileWriter fileWriter = new FileWriter(filePath, false);
             BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
 
             for (String line : chunks) {
@@ -344,110 +379,173 @@ class MyDedup {
             println("Error writing file '" + fileName + "'");
             ex.printStackTrace();
         }
-        uploadRecipe(fileName);
-    }
-
-    private void uploadRecipe(String fileName) {
-        
-    }
-
-    private void downloadRecipe(String fileName) {
-
-    }
-
-    private String[] constructFile(String filename) {
-        return null;
+        uploadFile(filePath);
     }
 
     public void upload(String file_to_upload) {
-        /*byte[] buf = readFileBytes(file_to_upload);
+        File f = new File(file_to_upload);
+        String fileName = f.getName();
+
+        //fileName = "file1";
+
+        if (this.fileList.containsKey(fileName)) {
+            println("Error: File already exists!");
+            this.close();
+            return;
+        }
+
+        //byte[] buf = {1,2,3,4,5,7,8,9,1};
+
+        byte[] buf = readFileBytes(file_to_upload);
         if (buf == null) {
             println("Error: Failed to read file");
             return;
-        }*/
+        }
 
-        byte[] buf = {0,0,0,0,0,0,0,3,6,4,3,0,0,0,0,1,4,4,3, 0,0,0};
+        String[] chunks = makeChunks(buf);
 
-
+        writeRecipe(fileName, chunks);
         
-        String[] chunks = getChunks(buf);
-        println(Arrays.toString(chunks));
-          
-        
-        
-        
-        /*
-            VARS:
-                min_chunk = window size
-                avg_chunk = q
-                Anchor mask = k 1-bits
-                k = sqrt(q)
+        this.fileList.put(fileName, (long)buf.length);
+        this.numLogicalChunks += chunks.length;
+        this.numPhysicalChunks = this.index.size();
+        // this.numBytesDedup is set in uploadChunk()
+        this.numBytesNoDedup += buf.length;
 
-            Input stream
-            Chunking
-            Checksum
-            Indexing
-            Upload
+        reportCumStat();
 
-            -Load metadata file mydedup.index
-                mydedup.index stores index structure
-                containing fingerprints of stored files
-            - Read pathname
-            - Chunk by Rabin fprint
-                - Deal with zero chunks:
-                if numz eores  > min chunk size
-                Dont upload zeroes. simply mark in file recipe
-            - Upload unique chunks
-            - Update index structure with new fingerprints
-            - Store mydedup.index, recipe
-            -Report cumulative statistics
-                - Total logical chunks in storage (from all files)
-                - Total unique physical chunks
-                - Num bytes with deduplication
-                - Num bytes without deduplication
-                - Space saving
-            */
+        this.close();
     }
 
-    public void download(String file_to_download, String local_filename) {
-        /*
-            - get pathname
-            - retrieve chunks and reconstruct
-        
-            Get chunklist from recipe
-            For each chunk:
-                Zero chunk = reconstruct
-                non zero = download from store
-        */
+    public void download(String file_to_download, String localFilePath) {
+        File f = new File(file_to_download);
+        String fileName = f.getName();
+
+        // fileName = "file1";
+
+        if (this.fileList.containsKey(fileName)) {
+            downloadFile(fileName);
+            
+            String filePath = this.store + fileName;
+            String line = null;
+            String[] words = null;
+
+            // writer
+            try (FileOutputStream fos = new FileOutputStream(localFilePath, false)){
+                BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fos);
+                try {
+                    FileReader fileReader = new FileReader(filePath);
+                    BufferedReader bufferedReader = new BufferedReader(fileReader);
+                    byte[] buf = null;
+                    while((line = bufferedReader.readLine()) != null) {
+                        words = line.split(" ");
+                        int flag = Integer.valueOf(words[0]);
+                        if (flag == 0) {
+                            int numZeroes = Integer.valueOf(words[1]);
+                            buf = new byte[numZeroes];   // Auto initialized to zero
+                        }
+                        else {
+                            String hash = words[1];
+                            downloadFile(hash);
+                            String chunkPath = this.store + hash;
+                            buf = readFileBytes(chunkPath);
+                        }
+                        bufferedOutputStream.write(buf);
+                    }
+                    bufferedReader.close();         
+                }
+                catch(FileNotFoundException ex) {     
+                    println("Error: File failed to download!");       
+                }
+                catch(IOException ex) {
+                    println("Error reading file '" + filePath + "'");
+                    ex.printStackTrace();
+                }
+                bufferedOutputStream.close();
+            }
+            catch(IOException e) {
+                e.printStackTrace();
+            }
+        }
+        else {
+            println("Error: File does not exist!");
+        }
+        this.close();
     }
 
     public void delete(String file_to_delete) {
-        /*
-            - get pathname
-            - delete file
-            - If chunk no olonger shared, delete chunk
-            - remove chunk from index
+        File f = new File(file_to_delete);
+        String fileName = f.getName();
 
-            Get chunklist
-            update index
-            delete from backend
-        */
+        if (this.fileList.containsKey(fileName)) {
+            this.fileList.remove(fileName);
+
+            downloadFile(fileName);
+
+            String filePath = this.store + fileName;
+            String line = null;
+            String[] words = null;
+            try {
+                FileReader fileReader = new FileReader(filePath);
+                BufferedReader bufferedReader = new BufferedReader(fileReader);
+                while((line = bufferedReader.readLine()) != null) {
+                    words = line.split(" ");
+                    int flag = Integer.valueOf(words[0]);
+                    if (flag == 1) {
+                        String hash = words[1];
+                        int ref = this.index.get(hash);
+                        if (ref > 1)
+                            this.index.put(hash, ref - 1);
+                        else {
+                            this.index.remove(hash);
+                            File hashFile = new File(this.store + hash);
+                            if (hashFile.exists()){
+                                hashFile.delete();
+                            }
+                            deleteFile(hash);
+                        }   
+                    }
+                }
+                bufferedReader.close();         
+            }
+            catch(FileNotFoundException ex) {     
+                println("Error: File failed to download!");       
+            }
+            catch(IOException ex) {
+                println("Error reading file '" + filePath + "'");
+                ex.printStackTrace();
+            }
+            
+            File file = new File(this.store + fileName);
+            if (file.exists()){
+                file.delete();
+            }
+            deleteFile(fileName);
+
+        }
+        else {
+            println("Error: File does not exist!");
+        }
+        this.close();
     }
 
-    /*
-
-        Procedure:
-        1. Upload:
-
-        2. Download
-
-
-        3. Delete
-
-    */
+    public void close() {
+        this.storeIndex();
+        this.storeFileList();
+    }
 
     public static void println(Object line) {
         System.out.println(line);
+    }
+
+    private void reportCumStat() {
+        double spaceSaving = 1.0 - ((double)this.numBytesDedup/this.numBytesNoDedup);
+        println("Report Output:");
+        println("Total number of logical chunks in storage: " + String.valueOf(this.numLogicalChunks));
+        println("Number of unique physical chunks in storage: " + String.valueOf(this.numPhysicalChunks));
+        println("Number of bytes in storage with deduplication: " + String.valueOf(this.numBytesDedup));
+        println("Number of bytes in storage without deduplication: " + String.valueOf(this.numBytesNoDedup));
+        println("Space saving: " + String.valueOf(spaceSaving));
     }
 
     public static void printUsage() {
@@ -457,9 +555,8 @@ class MyDedup {
         println("       Download:   java MyDedup download <file_to_download> <local_file_name> <local|azure>");
         println("       Delete:     java MyDedup delete <file_to_delete> <local|azure>");
     }
-
+    
     public static void main(String[] args) {
-
         String[] functions = {"upload", "download", "delete"};
         int[] lengths = {7, 4, 3};
         boolean correctInput = false;
@@ -478,7 +575,7 @@ class MyDedup {
             boolean cloud = false;
             if (args[lengths[correctIndex] - 1].equals("azure"))
                 cloud = true;
-            MyDedup dedup;
+            MyDedup dedup = null;
             switch (args[0]) {
                 case "upload":
                     dedup = new MyDedup(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3]),
@@ -503,47 +600,3 @@ class MyDedup {
         }
     }
 }
-
-/*
-SYSTEM DESIGN
-    mydedup.index
-        Infile : Hash -> # references
-        Inmemory: Map <String, int>
-    recipes:
-        create a recipe blob per file
-        -------------------
-        | 0 flag  signature|
-        |   0         #    |
-        |   1       50     |
-        -------------------
-*/
-
-/*
-Upload:
-Input:
-
-java MyDedup upload <min_chunk> <avg_chunk> <max_chunk> <d> <file_to_upload> <local|azure>
-
-Output:
-
-Report Output:
-Total number of logical chunks in storage:
-Number of unique physical chunks in storage:
-Number of bytes in storage with deduplication:
-Number of bytes in storage without deduplication:
-Space saving:
-------------------------------------------------------------
-Download:
-java MyDedup download <file_to_download> <local_file_name> <local|azure>
----------------------------------------------------------
-
-Delete:
-java MyDedup delete <file_to_delete> <local|azure>
------------------------------------------------------
-
-Checksum:
-MessageDigest md = MessageDigest.getInstance(“SHA-256”);
-md.update(data, 0, len);
-byte[] checksumBytes= md.digest()
-
-*/

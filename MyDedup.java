@@ -9,7 +9,7 @@ import com.microsoft.azure.storage.*;
 import com.microsoft.azure.storage.blob.*;
 
 class MyDedup {
-    public static final String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=csci4180group21;AccountKey=UyzAoz7p5J8034s+yzxvbVaWOEiHfgqw+HgsLPR9Ny5PTwXZ3C1xFvHEwGxHu//xbqSRWEyHQa4kQwOT+NZvYA==;EndpointSuffix=core.windows.net";
+    public static final String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=csci4180group21;AccountKey=2s1lR1DLRTIIfoLRO6bKDSu+74OxWOp0rjcw1yKuMvPYbWUQ4NaDWIMEm5RdZytKr4UCBFS6TVqSWiRAJjKrzg==;EndpointSuffix=core.windows.net";
     static {
         System.setProperty("https.proxyHost", "proxy.cse.cuhk.edu.hk");
         System.setProperty("https.proxyPort", "8000");

@@ -5,8 +5,18 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import com.microsoft.azure.storage.*;
+import com.microsoft.azure.storage.blob.*;
 
 class MyDedup {
+    public static final String storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=csci4180group21;AccountKey=UyzAoz7p5J8034s+yzxvbVaWOEiHfgqw+HgsLPR9Ny5PTwXZ3C1xFvHEwGxHu//xbqSRWEyHQa4kQwOT+NZvYA==;EndpointSuffix=core.windows.net";
+    static {
+        System.setProperty("https.proxyHost", "proxy.cse.cuhk.edu.hk");
+        System.setProperty("https.proxyPort", "8000");
+        System.setProperty("http.proxyHost", "proxy.cse.cuhk.edu.hk");
+        System.setProperty("http.proxyPort", "8000");
+    }
+    
     public static final String localStore = "data/";
     public static final String indexFileName = "mydedup.index";
     public static final String fileListName = "mydedup.filelist";
@@ -21,6 +31,8 @@ class MyDedup {
     private int numBytesDedup;
     private int numBytesNoDedup;
 
+    private CloudBlobContainer container;
+
     public MyDedup(int min_chunk, int avg_chunk, int max_chunk, int d, boolean cloud) {
         this(cloud);
         this.windowSize = min_chunk;
@@ -32,6 +44,8 @@ class MyDedup {
 
     public MyDedup(boolean cloud) {
         this.cloud = cloud;
+        if (this.cloud)
+            setupAzure();
         this.store = getLocalStore();
         this.numLogicalChunks = 0;
         this.numPhysicalChunks = 0;
@@ -49,24 +63,70 @@ class MyDedup {
         return localStore;
     }
 
-    private void uploadFile(String filePath) {
-        // Upload from Path only - do not append this.store
-        if (this.cloud) {
-
+    public void setupAzure() {
+        try {
+            CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
+            CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
+            this.container = blobClient.getContainerReference("mycontainer");
+            this.container.createIfNotExists();
+            println("Cloud Connection established! Beam up the data Scotty!");
+        }
+        catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
-    private void downloadFile(String fileName) {
-        // Store in this.store
+    private int uploadFile(String fileName) {
         if (this.cloud) {
-
+            String remoteFileName = fileName;
+            String localFileName = this.store + fileName;
+            try {
+                System.out.print("Beaming up file \""+ fileName + "\"...");
+                CloudBlockBlob blob = this.container.getBlockBlobReference(remoteFileName);
+                File source = new File(localFileName);
+                blob.upload(new FileInputStream(source), source.length());
+                println("DONE");
+                return 1;
+            }
+            catch(Exception e) {
+            }
+            return 0;
         }
+        return 1;
     }
 
-    private void deleteFile(String fileName) {
+    private int downloadFile(String fileName) {
         if (this.cloud) {
+            String remoteFileName = fileName;
+            String localFileName = this.store + fileName;
+            try {
+                System.out.print("Downloading file \""+ fileName + "\"...");
+                CloudBlockBlob blob = this.container.getBlockBlobReference(remoteFileName);
+                blob.download(new FileOutputStream(localFileName));
+                println("DONE");
+                return 1;
+            }
+            catch(Exception e) {
+            }
+            return 0;
+        }   
+        return 1;
+    }
 
+    private int deleteFile(String fileName) {
+        if (this.cloud) {
+            try {
+                System.out.print("Deleting file \""+ fileName + "\"...");
+                CloudBlockBlob blob = container.getBlockBlobReference(fileName);
+                blob.deleteIfExists();
+                println("DONE");
+                return 1;
+            }
+            catch(Exception e) {
+            }
+            return 0;
         }
+        return 1;
     }
 
     private void constructIndex() {
@@ -75,7 +135,7 @@ class MyDedup {
         String line = null;
         String[] words = null;
 
-        downloadFile(indexFileName);
+        int ret = downloadFile(indexFileName);
 
         try {
             FileReader fileReader = new FileReader(filePath);
@@ -107,10 +167,7 @@ class MyDedup {
     }
 
     private void storeIndex() {
-        /*
-        Update index file from structure
-        Upload new index file
-        */
+
         String filePath = this.store + indexFileName;
         String line = null;
         try {
@@ -136,7 +193,9 @@ class MyDedup {
             ex.printStackTrace();
         }
 
-        uploadFile(filePath);
+        if (uploadFile(indexFileName) == 0) {
+            println("Error: Index upload failed!");
+        }
     }
 
     private void constructFileList() {
@@ -145,7 +204,7 @@ class MyDedup {
         String line = null;
         String[] words = null;
         
-        downloadFile(fileListName);
+        int ret = downloadFile(fileListName);
 
         try {
             FileReader fileReader = new FileReader(filePath);
@@ -164,7 +223,6 @@ class MyDedup {
             println("Error reading file '" + filePath + "'");
             ex.printStackTrace();
         }
-        //println(Arrays.toString(this.fileList.entrySet().toArray()));
     }
 
     private void storeFileList() {
@@ -187,7 +245,9 @@ class MyDedup {
             ex.printStackTrace();
         }
         
-        uploadFile(filePath);
+        if (uploadFile(fileListName) == 0) {
+            println("Error: file list upload failed!");
+        }
     }
 
     private byte[] readFileBytes(String filePath) {
@@ -265,7 +325,9 @@ class MyDedup {
             catch(IOException e) {
                 e.printStackTrace();
             }
-            uploadFile(filePath);
+            if (uploadFile(hash) == 0) {
+                println("Error: chunk upload failed!");
+            }
         }
     }
 
@@ -379,22 +441,20 @@ class MyDedup {
             println("Error writing file '" + fileName + "'");
             ex.printStackTrace();
         }
-        uploadFile(filePath);
+        if (uploadFile(fileName) == 0) {
+            println("Error: file recipe upload failed!");
+        }
     }
 
     public void upload(String file_to_upload) {
         File f = new File(file_to_upload);
         String fileName = f.getName();
 
-        //fileName = "file1";
-
         if (this.fileList.containsKey(fileName)) {
             println("Error: File already exists!");
             this.close();
             return;
         }
-
-        //byte[] buf = {1,2,3,4,5,7,8,9,1};
 
         byte[] buf = readFileBytes(file_to_upload);
         if (buf == null) {
@@ -405,7 +465,7 @@ class MyDedup {
         String[] chunks = makeChunks(buf);
 
         writeRecipe(fileName, chunks);
-        
+
         this.fileList.put(fileName, (long)buf.length);
         this.numLogicalChunks += chunks.length;
         this.numPhysicalChunks = this.index.size();
@@ -421,16 +481,15 @@ class MyDedup {
         File f = new File(file_to_download);
         String fileName = f.getName();
 
-        // fileName = "file1";
-
         if (this.fileList.containsKey(fileName)) {
-            downloadFile(fileName);
+            if (downloadFile(fileName) == 0) {
+                println("Error: File recipe failed to download");
+            }
             
             String filePath = this.store + fileName;
             String line = null;
             String[] words = null;
 
-            // writer
             try (FileOutputStream fos = new FileOutputStream(localFilePath, false)){
                 BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fos);
                 try {
@@ -446,7 +505,9 @@ class MyDedup {
                         }
                         else {
                             String hash = words[1];
-                            downloadFile(hash);
+                            if (downloadFile(hash) == 0) {
+                                println("Error: Chunk failed to download");
+                            }
                             String chunkPath = this.store + hash;
                             buf = readFileBytes(chunkPath);
                         }
@@ -455,7 +516,7 @@ class MyDedup {
                     bufferedReader.close();         
                 }
                 catch(FileNotFoundException ex) {     
-                    println("Error: File failed to download!");       
+                    println("Error: File not found!");       
                 }
                 catch(IOException ex) {
                     println("Error reading file '" + filePath + "'");
@@ -480,7 +541,9 @@ class MyDedup {
         if (this.fileList.containsKey(fileName)) {
             this.fileList.remove(fileName);
 
-            downloadFile(fileName);
+            if (downloadFile(fileName) == 0) {
+                println("Error: File recipe failed to download");
+            }
 
             String filePath = this.store + fileName;
             String line = null;
@@ -502,14 +565,16 @@ class MyDedup {
                             if (hashFile.exists()){
                                 hashFile.delete();
                             }
-                            deleteFile(hash);
+                            if (deleteFile(hash) == 0) {
+                                println("Error: Failed to delete chunk.");
+                            }
                         }   
                     }
                 }
                 bufferedReader.close();         
             }
             catch(FileNotFoundException ex) {     
-                println("Error: File failed to download!");       
+                println("Error: File not found!");       
             }
             catch(IOException ex) {
                 println("Error reading file '" + filePath + "'");
@@ -520,8 +585,9 @@ class MyDedup {
             if (file.exists()){
                 file.delete();
             }
-            deleteFile(fileName);
-
+            if (deleteFile(fileName) == 0) {
+                println("Error: Failed to delete file recipe");
+            }
         }
         else {
             println("Error: File does not exist!");
@@ -540,20 +606,22 @@ class MyDedup {
 
     private void reportCumStat() {
         double spaceSaving = 1.0 - ((double)this.numBytesDedup/this.numBytesNoDedup);
+        println("-----------------------------------------------------------");
         println("Report Output:");
         println("Total number of logical chunks in storage: " + String.valueOf(this.numLogicalChunks));
         println("Number of unique physical chunks in storage: " + String.valueOf(this.numPhysicalChunks));
         println("Number of bytes in storage with deduplication: " + String.valueOf(this.numBytesDedup));
         println("Number of bytes in storage without deduplication: " + String.valueOf(this.numBytesNoDedup));
         println("Space saving: " + String.valueOf(spaceSaving));
+        println("-----------------------------------------------------------");
     }
 
     public static void printUsage() {
         println("MyDedup: invalid option");
         println("Usage:");
-        println("       Upload:     java MyDedup upload <min_chunk> <avg_chunk> <max_chunk> <d> <file_to_upload> <local|azure>");
-        println("       Download:   java MyDedup download <file_to_download> <local_file_name> <local|azure>");
-        println("       Delete:     java MyDedup delete <file_to_delete> <local|azure>");
+        println("       Upload:     java -cp .:./lib/* MyDedup upload <min_chunk> <avg_chunk> <max_chunk> <d> <file_to_upload> <local|azure>");
+        println("       Download:   java -cp .:./lib/* MyDedup download <file_to_download> <local_file_name> <local|azure>");
+        println("       Delete:     java -cp .:./lib/* MyDedup delete <file_to_delete> <local|azure>");
     }
     
     public static void main(String[] args) {
@@ -570,7 +638,6 @@ class MyDedup {
                 }
             }
         }
-
         if (correctInput) {
             boolean cloud = false;
             if (args[lengths[correctIndex] - 1].equals("azure"))

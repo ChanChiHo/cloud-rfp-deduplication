@@ -1,14 +1,18 @@
-mydedup:
-	javac MyDedup.java
+default: all
+
+all: build
+
+build:
+	javac -cp .:./lib/* MyDedup.java
 
 upload:
-	java MyDedup upload 4 8 16 257 test/b.txt local
+	java -cp .:./lib/* MyDedup upload 512 2048 65535 257 MyDedup.class azure
 
 download:
-	java MyDedup download b.txt d_b.txt local
+	java -cp .:./lib/* MyDedup download MyDedup.class MYDedupDownloaded.class azure
 
 delete:
-	java MyDedup delete b.txt local
+	java -cp .:./lib/* MyDedup delete MyDedup.class azure
 
 clean:
-	rm MyDedup.class
+	rm *.class
